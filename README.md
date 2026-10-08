@@ -124,6 +124,53 @@ Wszystkie dostępne rozmiary (łącznie 3):
 ❌ NIE ZNALEZIONO dopasowań dla "122". Rozmiar niedostępny.
 ```
 
+## 📁 Struktura projektu
+
+```
+size-checker/
+├── .github/
+│   └── workflows/
+│       └── check-sizes.yml   # Główny obieg (uruchamiany co 5 minut)
+├── src/
+│   ├── index.js              # Główny skrypt orkiestrujący
+│   ├── scraper.js            # Pobieranie stron, omijanie blokad, parser rozmiarów z LPP (Sinsay)
+│   ├── sheets.js             # Komunikacja z Google Sheets API v4
+│   └── discord.js            # Wysyłanie powiadomień na Discord
+├── scripts/
+│   └── test-size.js          # Narzędzie CLI do szybkiego testowania scrapera dla URL i rozmiaru
+├── .env.example              # Szablon zmiennych środowiskowych
+├── package.json              # Zależności i skrypty npm
+└── README.md                 # Główny dokument repozytorium
+```
+
+---
+
+## ❓ Najczęstsze pytania (FAQ)
+
+<details>
+<summary><b>Jak często skrypt sprawdza dostępność rozmiarów?</b></summary>
+
+Domyślnie projekt uruchamia się w GitHub Actions **co 5 minut**. Zapewnia to natychmiastowe powiadomienie, gdy poszukiwany rozmiar wróci do sprzedaży. Możesz to dostosować, zmieniając wyrażenie cron w pliku `.github/workflows/check-sizes.yml`.
+</details>
+
+<details>
+<summary><b>Co zrobić, gdy bot nie potrafi pobrać rozmiarów ze sklepu?</b></summary>
+
+Upewnij się, że link jest poprawny. Bot wyciąga stany magazynowe bezpośrednio ze struktury danych umieszczonej w kodzie HTML sklepu (zoptymalizowane pod sklepy z grupy LPP - m.in. Sinsay). Użyj wbudowanego narzędzia `npm run test-size "LINK_DO_PRODUKTU"`, aby szybko zdiagnozować problem.
+</details>
+
+<details>
+<summary><b>Czy mogę sprawdzić dostępność kilku rozmiarów jednocześnie?</b></summary>
+
+Oczywiście! W kolumnie **Szukany rozmiar** wpisz je oddzielając przecinkiem (np. `L, XL` lub `122, 128`). Spacje przed/po przecinku oraz wielkość liter nie mają znaczenia. Jeśli zostawisz tę kolumnę całkowicie pustą, bot powiadomi o pojawieniu się **dowolnego** rozmiaru dla danego produktu.
+</details>
+
+<details>
+<summary><b>Czy korzystanie z GitHub Actions jest płatne?</b></summary>
+
+Dla publicznych repozytoriów GitHub Actions są **w 100% darmowe i nielimitowane**. Dla prywatnych repozytoriów otrzymujesz 2000 darmowych minut miesięcznie, co przy szybkim wykonywaniu tego skryptu w zupełności wystarczy na długi czas, nawet przy sprawdzaniu co 5 minut.
+</details>
+
 ---
 
 ## 📄 Licencja

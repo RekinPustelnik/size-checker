@@ -1,0 +1,5 @@
+#!/bin/sh
+# Automatyczna instalacja zależności po git pull / merge
+echo "🔄 Post-merge hook: instaluję zależności..."
+npm install
+echo "✅ Gotowe!"

@@ -95,8 +95,11 @@ async function main() {
         alertSizes = newlyAvailableSizes;
     }
     
-    // Jeśli mamy produkt bez zapisanej historii ("Pierwsze sprawdzenie"), nie wysyłamy alertu
-    if (!product.dostepne && !product.ostatnioDostepne && newSizesArr.length > 0) {
+    const isFirstCheck = !product.dostepne && !product.ostatnioDostepne;
+
+    // Jeśli to pierwsze sprawdzenie, wysyłamy alert TYLKO wtedy, gdy użytkownik sprecyzował szukany rozmiar 
+    // i został on od razu znaleziony. Jeśli nie podał rozmiaru (chce wszystkie), ignorujemy pierwsze sprawdzenie, by nie spamować.
+    if (isFirstCheck && (!product.szukanyRozmiar || alertSizes.length === 0)) {
         console.log(`  📝 Pierwsze sprawdzenie — zapisuję aktualne stany bez wysyłania alertu.`);
     } else if (alertSizes.length > 0) {
         console.log(`  🚨 Pojawiły się SZUKANE rozmiary: ${alertSizes.join(', ')}`);

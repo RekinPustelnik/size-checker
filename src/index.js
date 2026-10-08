@@ -115,13 +115,54 @@ async function main() {
         console.log(`  — Brak nowych poszukiwanych rozmiarów (aktualnie dostępne: ${newSizesStr || 'Brak'})`);
     }
 
+    // --- Logika dla "Ostatnio dostępne" (Rozmiar (Data)) ---
+    const history = {};
+    if (product.ostatnioDostepne) {
+        const parts = product.ostatnioDostepne.split(',');
+        for (const part of parts) {
+            const match = part.trim().match(/(.+?)\s*\((.+?)\)/);
+            if (match) {
+                history[match[1].trim()] = match[2].trim();
+            }
+        }
+    }
+
+    const nowFormatted = new Date().toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    for (const size of newSizesArr) {
+        let shouldTrack = false;
+        if (product.szukanyRozmiar) {
+            const szukane = product.szukanyRozmiar.split(',').map(s => s.trim().toLowerCase());
+            if (szukane.some(szukany => size.toLowerCase().includes(szukany))) {
+                shouldTrack = true;
+            }
+        } else {
+            shouldTrack = true;
+        }
+        if (shouldTrack) {
+            history[size] = nowFormatted;
+        }
+    }
+
+    if (product.szukanyRozmiar) {
+        const szukane = product.szukanyRozmiar.split(',').map(s => s.trim().toLowerCase());
+        for (const key of Object.keys(history)) {
+            if (!szukane.some(szukany => key.toLowerCase().includes(szukany))) {
+                delete history[key];
+            }
+        }
+    }
+
+    const historyArr = Object.entries(history).map(([sz, date]) => `${sz} (${date})`);
+    const historyStr = historyArr.length > 0 ? historyArr.join(', ') : '';
+
     if (!isDryRun) {
       try {
         await updateSizes(product.row, {
           dostepne: newSizesStr,
-          ostatnioDostepne: product.dostepne // Przesuwamy aktualne do kolumny "Ostatnio dostępne" dla zachowania historii
+          ostatnioDostepne: historyStr
         });
-        console.log(`  ✓ Arkusz zaktualizowany`);
+        console.log(`  ✓ Arkusz zaktualizowany (Historia: ${historyStr || 'Brak'})`);
         if (product.bledyZRzedu > 0) {
           console.log(`  ✓ Licznik błędów zresetowany`);
         }
@@ -130,7 +171,7 @@ async function main() {
         stats.errors++;
       }
     } else {
-      console.log(`  [DRY-RUN] Symulacja zapisu do Sheets: dostepne="${newSizesStr}", ostatnio="${product.dostepne}"`);
+      console.log(`  [DRY-RUN] Symulacja zapisu: dostepne="${newSizesStr}", ostatnio="${historyStr}"`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));

@@ -1,9 +1,12 @@
 name: 👕 Sprawdź rozmiary
 
 on:
+  push:
+    branches:
+      - main
   schedule:
-    # Co 5 minut
-    - cron: '*/5 * * * *'
+    # Co 10 minut (zbyt częste odpytywanie np. co 5 min może być ignorowane przez darmowe serwery GitHub)
+    - cron: '*/10 * * * *'
   # Możliwość ręcznego uruchomienia z zakładki Actions
   workflow_dispatch:
 

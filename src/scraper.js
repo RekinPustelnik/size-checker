@@ -63,8 +63,33 @@ export async function scrapeSizes(url) {
       }
     }
 
-    // Ekstrakcja JSON z Sinsay (z window.productData)
-    // Sinsay trzyma dane produktu w skrypcie na stronie
+    let availableSizes = [];
+
+    // --- ESOTIQ PARSING ---
+    const nextDataStr = $('#__NEXT_DATA__').html();
+    if (nextDataStr) {
+      try {
+        const data = JSON.parse(nextDataStr);
+        const products = data.props?.pageProps?.contentData?.modelColor?.products;
+        if (products && Array.isArray(products)) {
+          for (const p of products) {
+            // availability = 0 (brak), > 0 (dostępne)
+            if (p.availability > 0 || p.availability === true || p.availability === 'true') {
+              if (p.size_label) {
+                availableSizes.push(p.size_label);
+              }
+            }
+          }
+          const uniqueSizes = [...new Set(availableSizes)].sort();
+          console.log(`  ✓ Znaleziono dostępne rozmiary (Esotiq): ${uniqueSizes.length > 0 ? uniqueSizes.join(', ') : 'Brak'}`);
+          return { sizes: uniqueSizes, ogImage, error: null };
+        }
+      } catch (e) {
+         console.error('Błąd parsowania Esotiq __NEXT_DATA__', e);
+      }
+    }
+
+    // --- LPP (SINSAY/RESERVED) PARSING ---
     let productDataJson = null;
     $('script').each((_, el) => {
       const scriptContent = $(el).html();
@@ -73,42 +98,25 @@ export async function scrapeSizes(url) {
          if (match && match[1]) {
              try {
                  productDataJson = JSON.parse(match[1]);
-             } catch (e) {
-                 // Ignore parse errors, will check if productDataJson is null
-             }
+             } catch (e) {}
          }
       }
     });
 
-    if (!productDataJson) {
-      throw new Error('Nie znaleziono danych getProductData na stronie.');
-    }
-
-    if (!productDataJson.sizes || !Array.isArray(productDataJson.sizes)) {
-        throw new Error('Obiekt productData nie zawiera tablicy sizes.');
-    }
-    
-    const availableSizes = [];
-    
-    // Przeszukujemy tablicę sizes
-    for (const sizeInfo of productDataJson.sizes) {
-        if (sizeInfo.isInStock && sizeInfo.stockQuantity > 0) {
-            if (sizeInfo.sizeName) {
-                availableSizes.push(sizeInfo.sizeName);
+    if (productDataJson && productDataJson.sizes && Array.isArray(productDataJson.sizes)) {
+        for (const sizeInfo of productDataJson.sizes) {
+            if (sizeInfo.isInStock && sizeInfo.stockQuantity > 0) {
+                if (sizeInfo.sizeName) {
+                    availableSizes.push(sizeInfo.sizeName);
+                }
             }
         }
+        const uniqueSizes = [...new Set(availableSizes)].sort();
+        console.log(`  ✓ Znaleziono dostępne rozmiary (LPP): ${uniqueSizes.length > 0 ? uniqueSizes.join(', ') : 'Brak'}`);
+        return { sizes: uniqueSizes, ogImage, error: null };
     }
-    
-    // Zwracamy posortowane dla spójności i wyeliminowania duplikatów
-    const uniqueSizes = [...new Set(availableSizes)].sort();
-    
-    console.log(`  ✓ Znaleziono dostępne rozmiary: ${uniqueSizes.length > 0 ? uniqueSizes.join(', ') : 'Brak'}`);
 
-    return { 
-        sizes: uniqueSizes, 
-        ogImage, 
-        error: null 
-    };
+    throw new Error('Nie rozpoznano struktury danych na stronie (ani LPP, ani Esotiq).');
 
   } catch (err) {
     lastError = err.message;

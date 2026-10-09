@@ -65,6 +65,29 @@ export async function scrapeSizes(url) {
 
     let availableSizes = [];
 
+    // --- MODIVO / LD-JSON PARSING ---
+    let foundLdJson = false;
+    let ldSizes = [];
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const data = JSON.parse($(el).html());
+        if (data['@type'] === 'ProductGroup' && data.hasVariant) {
+          foundLdJson = true;
+          for (const variant of data.hasVariant) {
+            if (variant.size && variant.offers && variant.offers.availability === 'https://schema.org/InStock') {
+              ldSizes.push(variant.size);
+            }
+          }
+        }
+      } catch (e) {}
+    });
+
+    if (foundLdJson) {
+      const uniqueSizes = [...new Set(ldSizes)].sort();
+      console.log(`  ✓ Znaleziono dostępne rozmiary (Modivo/Schema.org): ${uniqueSizes.length > 0 ? uniqueSizes.join(', ') : 'Brak'}`);
+      return { sizes: uniqueSizes, ogImage, error: null };
+    }
+
     // --- ESOTIQ PARSING ---
     const nextDataStr = $('#__NEXT_DATA__').html();
     if (nextDataStr) {

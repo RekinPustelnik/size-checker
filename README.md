@@ -71,7 +71,8 @@ Przejdź do **Settings → Secrets and variables → Actions** w ustawieniach Tw
 | `SPREADSHEET_ID` | Długi ciąg znaków z paska adresu URL Twojego arkusza |
 | `DISCORD_WEBHOOK_URL` | Skopiowany adres URL Webhooka z Discorda |
 
-Kiedy sekrety są dodane, włącz Actions (zakładka Actions -> wpierw zazwyczaj trzeba kliknąć zielony przycisk wyrażający zgodę na ich uruchamianie w nowym repo). Skrypt będzie sprawdzał dostępność co **5 minut**.
+Kiedy sekrety są dodane, przejdź do zakładki **Actions** w GitHubie i uruchom workflow **Sprawdź dostępność rozmiarów** ręcznie (przycisk *Run workflow*).
+*(Z powodu limitów darmowych minut w GitHub Actions dla prywatnych repozytoriów, automatyczny harmonogram (cron) został domyślnie wyłączony – sprawdź sekcję FAQ, aby dowiedzieć się, jak uruchomić go za darmo w tle).*
 
 ---
 
@@ -150,7 +151,12 @@ size-checker/
 <details>
 <summary><b>Jak często skrypt sprawdza dostępność rozmiarów?</b></summary>
 
-Domyślnie projekt uruchamia się w GitHub Actions **co 5 minut**. Zapewnia to natychmiastowe powiadomienie, gdy poszukiwany rozmiar wróci do sprzedaży. Możesz to dostosować, zmieniając wyrażenie cron w pliku `.github/workflows/check-sizes.yml`.
+Domyślnie skrypt przystosowany jest do uruchamiania **ręcznego** (z zakładki Actions), ponieważ GitHub Actions dla prywatnych repozytoriów posiada limit 2000 minut miesięcznie (co przy sprawdzaniu co 5 minut wyczerpuje się w kilka dni).
+
+**Aby w pełni zautomatyzować sprawdzanie (np. co 5 minut) całkowicie za darmo, masz kilka opcji:**
+1. **GitHub Self-Hosted Runner**: Zainstaluj aplikację GitHuba na własnym, zawsze włączonym komputerze/Raspberry Pi.
+2. **Oracle Cloud VPS (Always Free)**: Załóż darmowy serwer w Oracle, umieść tam kod i ustaw systemowego `crona` (polecane, najstabilniejsze).
+3. **Publiczne Repozytorium**: Jeśli zmienisz repozytorium na "Publiczne", GitHub zdejmie limit 2000 minut (pamiętaj tylko, by sekrety zostały w *GitHub Secrets*, a nie w kodzie!). Wtedy możesz przywrócić blok `schedule` w pliku `.github/workflows/check-sizes.yml`.
 </details>
 
 <details>

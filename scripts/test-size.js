@@ -1,4 +1,5 @@
 import { scrapeSizes } from '../src/scraper.js';
+import { filterSizes } from '../src/matcher.js';
 
 async function test() {
   const url = process.argv[2];
@@ -26,11 +27,7 @@ async function test() {
   console.log(result.sizes.join(' | '));
   
   if (szukany) {
-    const szukaneArr = szukany.split(',').map(s => s.trim().toLowerCase());
-    const znalezione = result.sizes.filter(size => {
-        const sizeLower = size.toLowerCase();
-        return szukaneArr.some(sz => sizeLower.includes(sz)); 
-    });
+    const znalezione = filterSizes(result.sizes, szukany);
     
     console.log('\n--- WYNIK FILTRA ---');
     if (znalezione.length > 0) {

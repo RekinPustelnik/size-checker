@@ -95,6 +95,9 @@ npm run check
 
 # 4. Tryb Dry-Run (Sprawdza stany, ale NIE nadpisuje arkusza i NIE wysyła powiadomień na Discorda)
 npm run check:dry
+
+# 5. Testy jednostkowe filtra rozmiarów
+npm test
 ```
 
 ### Narzędzie testowe do selektorów (`test-size`)

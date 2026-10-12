@@ -1,6 +1,7 @@
 import { scrapeSizes } from './scraper.js';
 import { getProducts, updateSizes, incrementErrorCount } from './sheets.js';
 import { sendSizeAlert, sendErrorAlert, sendSummary } from './discord.js';
+import { matchesAnySize, filterSizes } from './matcher.js';
 
 const ERROR_ALERT_THRESHOLD = 5;
 
@@ -84,13 +85,7 @@ async function main() {
 
     // Filtrujemy nowo dostępne rozmiary, jeśli użytkownik podał szukany rozmiar
     if (product.szukanyRozmiar) {
-        const szukane = product.szukanyRozmiar.split(',').map(s => s.trim().toLowerCase());
-        alertSizes = newlyAvailableSizes.filter(size => {
-            const sizeLower = size.toLowerCase();
-            // Łagodniejsze dopasowanie - wystarczy że zawiera ciąg znaków 
-            // np. "104" złapie "104 (3-4 lata)"
-            return szukane.some(szukany => sizeLower.includes(szukany)); 
-        });
+        alertSizes = filterSizes(newlyAvailableSizes, product.szukanyRozmiar);
     } else {
         alertSizes = newlyAvailableSizes;
     }
@@ -130,24 +125,15 @@ async function main() {
     const nowFormatted = new Date().toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
     for (const size of newSizesArr) {
-        let shouldTrack = false;
-        if (product.szukanyRozmiar) {
-            const szukane = product.szukanyRozmiar.split(',').map(s => s.trim().toLowerCase());
-            if (szukane.some(szukany => size.toLowerCase().includes(szukany))) {
-                shouldTrack = true;
-            }
-        } else {
-            shouldTrack = true;
-        }
+        const shouldTrack = !product.szukanyRozmiar || matchesAnySize(size, product.szukanyRozmiar);
         if (shouldTrack) {
             history[size] = nowFormatted;
         }
     }
 
     if (product.szukanyRozmiar) {
-        const szukane = product.szukanyRozmiar.split(',').map(s => s.trim().toLowerCase());
         for (const key of Object.keys(history)) {
-            if (!szukane.some(szukany => key.toLowerCase().includes(szukany))) {
+            if (!matchesAnySize(key, product.szukanyRozmiar)) {
                 delete history[key];
             }
         }

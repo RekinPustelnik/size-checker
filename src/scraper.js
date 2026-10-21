@@ -54,6 +54,10 @@ export async function scrapeSizes(url) {
                   $('meta[property="og:image:url"]').attr('content') ||
                   null;
 
+    if (ogImage && (ogImage.includes('logo_share') || ogImage.includes('default_share'))) {
+      ogImage = null; // Ignoruj domyślne generyczne logo sklepu
+    }
+
     if (ogImage) {
       ogImage = ogImage.trim();
       try {
@@ -61,6 +65,20 @@ export async function scrapeSizes(url) {
       } catch {
         ogImage = null;
       }
+    }
+
+    // Fallback dla obrazka z LD+JSON (np. Answear)
+    if (!ogImage) {
+      $('script[type="application/ld+json"]').each((_, el) => {
+        try {
+          const data = JSON.parse($(el).html());
+          if (data['@type'] === 'Product' && data.image) {
+            const firstImg = Array.isArray(data.image) ? data.image[0] : data.image;
+            const imgUrl = typeof firstImg === 'string' ? firstImg : firstImg?.contentUrl || firstImg?.url;
+            if (imgUrl) ogImage = imgUrl;
+          }
+        } catch (e) {}
+      });
     }
 
     let availableSizes = [];
@@ -139,7 +157,54 @@ export async function scrapeSizes(url) {
         return { sizes: uniqueSizes, ogImage, error: null };
     }
 
-    throw new Error('Nie rozpoznano struktury danych na stronie (ani LPP, ani Esotiq).');
+    // --- ANSWEAR PARSING ---
+    let foundAnswear = false;
+    let answearSizes = [];
+    $('script').each((_, el) => {
+      const scriptContent = $(el).html();
+      if (scriptContent && scriptContent.includes('window.__REACT_QUERY_STATE__')) {
+        try {
+          const marker = 'window.__REACT_QUERY_STATE__ = ';
+          const start = scriptContent.indexOf(marker);
+          if (start !== -1) {
+            let jsonStr = scriptContent.slice(start + marker.length).trim();
+            const lastBrace = jsonStr.lastIndexOf('}');
+            if (lastBrace !== -1) {
+              jsonStr = jsonStr.slice(0, lastBrace + 1);
+            }
+            const state = JSON.parse(jsonStr);
+            for (const q of state.queries || []) {
+              const p = q.state?.data?.product;
+              if (p && Array.isArray(p.allSizes)) {
+                foundAnswear = true;
+                for (const s of p.allSizes) {
+                  const avail = s.variation?.availability;
+                  if (avail && avail !== 'OUT_OF_STOCK') {
+                    if (s.name) answearSizes.push(s.name);
+                  }
+                }
+                if (p.productImages && Array.isArray(p.productImages) && p.productImages.length > 0) {
+                  const firstImg = p.productImages[0];
+                  const imgUrl = typeof firstImg === 'string' ? firstImg : firstImg?.url || firstImg?.imageUrl || firstImg?.src;
+                  if (imgUrl) ogImage = imgUrl;
+                }
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Błąd parsowania Answear __REACT_QUERY_STATE__', e);
+        }
+      }
+    });
+
+    if (foundAnswear) {
+      const uniqueSizes = [...new Set(answearSizes)].sort();
+      console.log(`  ✓ Znaleziono dostępne rozmiary (Answear): ${uniqueSizes.length > 0 ? uniqueSizes.join(', ') : 'Brak'}`);
+      return { sizes: uniqueSizes, ogImage, error: null };
+    }
+
+    throw new Error('Nie rozpoznano struktury danych na stronie (ani LPP, ani Esotiq, ani Answear).');
 
   } catch (err) {
     lastError = err.message;

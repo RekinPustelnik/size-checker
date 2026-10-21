@@ -5,7 +5,17 @@
 [![Discord Webhook](https://img.shields.io/badge/Discord-Webhook%20Alerts-5865F2.svg)](https://discord.com)
 [![GitHub Actions](https://img.shields.io/badge/Automated-GitHub%20Actions-2088FF.svg)](https://github.com/features/actions)
 
-Bezserwerowy, zautomatyzowany tracker dostępności rozmiarów ze sklepów internetowych (zoptymalizowany dla sklepu Sinsay / grupy LPP). Działa za darmo w chmurze (**GitHub Actions**), przechowuje dane w **Google Sheets** i natychmiast wysyła powiadomienia na **Discord**, gdy poszukiwany rozmiar wróci do sprzedaży.
+Bezserwerowy, zautomatyzowany tracker dostępności rozmiarów ze sklepów internetowych (obsługuje m.in. **Answear**, **Sinsay / Reserved (grupa LPP)**, **Modivo**, **Esotiq**). Działa za darmo w chmurze (**GitHub Actions**), przechowuje dane w **Google Sheets** i natychmiast wysyła powiadomienia na **Discord**, gdy poszukiwany rozmiar wróci do sprzedaży.
+
+---
+
+## 🏬 Obsługiwane sklepy
+
+Bot wspiera automatyczne monitorowanie i odczyt stanów magazynowych dla:
+- 👕 **Answear** (`answear.com`) – bezpośredni odczyt stanów i wariantów z `window.__REACT_QUERY_STATE__` oraz Schema.org
+- 🛍️ **Grupa LPP** (`sinsay.com`, `reserved.com`, `housebrand.com`, `cropp.com`, `mohito.com`) – wyciąganie stanów z wewnętrznej struktury `getProductData`
+- 👗 **Modivo** (`modivo.pl`) – warianty i dostępność z danych Schema.org LD+JSON
+- 👙 **Esotiq** (`esotiq.com`) – ekstrakcja danych ze stanu aplikacji `__NEXT_DATA__`
 
 ---
 
@@ -15,7 +25,7 @@ Bezserwerowy, zautomatyzowany tracker dostępności rozmiarów ze sklepów inter
 - 📊 **Wygodny panel w Google Sheets**: Dodawaj linki i definiuj jakich rozmiarów szukasz bezpośrednio w arkuszu kalkulacyjnym.
 - 🚨 **Alerty Discord**: Natychmiastowe powiadomienia ze zdjęciem produktu i przyciskiem szybkiego przejścia do sklepu.
 - 🎯 **Inteligentne filtrowanie rozmiarów**: Możliwość podania konkretnego rozmiaru (np. `L` albo `122 (6-7 l)`). Można też wpisać kilka po przecinku: `M, L, XL`. Dostajesz powiadomienie tylko gdy to, czego faktycznie szukasz, wróci do sprzedaży.
-- 👕 **Specjalistyczny scraper**: Bezpośrednio i dokładnie odczytuje stany magazynowe z ukrytej struktury danych sklepu, nawet jeśli rozmiar wydaje się wyszarzony na stronie (Sinsay/LPP).
+- 👕 **Specjalistyczny scraper**: Bezpośrednio i dokładnie odczytuje stany magazynowe z ukrytej struktury danych sklepu (LPP, Answear, Modivo, Esotiq), nawet jeśli rozmiar wydaje się wyszarzony na stronie.
 
 ---
 
@@ -137,11 +147,15 @@ size-checker/
 │       └── check-sizes.yml   # Główny obieg (uruchamiany co 5 minut)
 ├── src/
 │   ├── index.js              # Główny skrypt orkiestrujący
-│   ├── scraper.js            # Pobieranie stron, omijanie blokad, parser rozmiarów z LPP (Sinsay)
+│   ├── scraper.js            # Pobieranie stron, omijanie blokad, parser rozmiarów (LPP, Answear, Modivo, Esotiq)
+│   ├── matcher.js            # Logika porównywania i filtrowania rozmiarów
 │   ├── sheets.js             # Komunikacja z Google Sheets API v4
 │   └── discord.js            # Wysyłanie powiadomień na Discord
 ├── scripts/
-│   └── test-size.js          # Narzędzie CLI do szybkiego testowania scrapera dla URL i rozmiaru
+│   ├── test-size.js          # Narzędzie CLI do szybkiego testowania scrapera dla dowolnego URL i rozmiaru
+│   ├── test-answear.js       # Szybki test dla linków z Answear
+│   ├── test-esotiq.js        # Szybki test dla linków z Esotiq
+│   └── test-modivo.js        # Szybki test dla linków z Modivo
 ├── .env.example              # Szablon zmiennych środowiskowych
 ├── package.json              # Zależności i skrypty npm
 └── README.md                 # Główny dokument repozytorium
@@ -165,7 +179,7 @@ Domyślnie skrypt przystosowany jest do uruchamiania **ręcznego** (z zakładki 
 <details>
 <summary><b>Co zrobić, gdy bot nie potrafi pobrać rozmiarów ze sklepu?</b></summary>
 
-Upewnij się, że link jest poprawny. Bot wyciąga stany magazynowe bezpośrednio ze struktury danych umieszczonej w kodzie HTML sklepu (zoptymalizowane pod sklepy z grupy LPP - m.in. Sinsay). Użyj wbudowanego narzędzia `npm run test-size "LINK_DO_PRODUKTU"`, aby szybko zdiagnozować problem.
+Upewnij się, że link jest poprawny. Bot wyciąga stany magazynowe bezpośrednio ze struktury danych umieszczonej w kodzie HTML sklepu (obsługuje m.in. sklepy z grupy LPP, Answear, Modivo oraz Esotiq). Użyj wbudowanego narzędzia `npm run test-size "LINK_DO_PRODUKTU"`, aby szybko zdiagnozować problem.
 </details>
 
 <details>

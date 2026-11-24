@@ -1,13 +1,14 @@
 import { google } from 'googleapis';
 
-const COLUMNS = {
+export const COLUMNS = {
   NAZWA: 0,
   URL: 1,
   SZUKANY_ROZMIAR: 2,
   DOSTEPNE: 3,
   OSTATNIO_DOSTEPNE: 4,
   OSTATNIE_SPRAWDZENIE: 5,
-  BLEDY_Z_RZEDU: 6,
+  OSTATNIA_DOSTEPNOSC: 6,
+  BLEDY_Z_RZEDU: 7,
 };
 
 function getAuth() {
@@ -39,13 +40,13 @@ export async function getProducts() {
   try {
     response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Produkty!A2:G1000',
+      range: 'Produkty!A2:H1000',
     });
   } catch (err) {
     console.warn(`  ⚠ Próba pobrania z 'Produkty!' nieudana, spadek do starej metody (Arkusz1).`);
     response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'A2:G1000',
+      range: 'A2:H1000',
     });
   }
 
@@ -59,6 +60,7 @@ export async function getProducts() {
       szukanyRozmiar: (row[COLUMNS.SZUKANY_ROZMIAR] || '').trim(),
       dostepne: (row[COLUMNS.DOSTEPNE] || '').trim(),
       ostatnioDostepne: (row[COLUMNS.OSTATNIO_DOSTEPNE] || '').trim(),
+      ostatniaDostepnosc: (row[COLUMNS.OSTATNIA_DOSTEPNOSC] || '').trim(),
       bledyZRzedu: parseInt(row[COLUMNS.BLEDY_Z_RZEDU], 10) || 0,
     }))
     .filter((p) => p.nazwa && p.url);
@@ -79,7 +81,8 @@ export async function updateSizes(row, updates) {
         { range: `${prefix}D${row}`, values: [[updates.dostepne ?? '']] },
         { range: `${prefix}E${row}`, values: [[updates.ostatnioDostepne ?? '']] },
         { range: `${prefix}F${row}`, values: [[now]] },
-        { range: `${prefix}G${row}`, values: [[0]] }, // reset błędów
+        { range: `${prefix}G${row}`, values: [[updates.ostatniaDostepnosc ?? '']] },
+        { range: `${prefix}H${row}`, values: [[0]] }, // reset błędów
       ],
     },
   });
@@ -103,7 +106,7 @@ export async function incrementErrorCount(row, currentCount) {
           values: [[now]],
         },
         {
-          range: `${prefix}G${row}`,
+          range: `${prefix}H${row}`,
           values: [[newCount]],
         },
       ],

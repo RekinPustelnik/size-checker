@@ -48,18 +48,22 @@ flowchart LR
 
 ### 1. Przygotuj arkusz Google Sheets
 Utwórz nowy arkusz i nazwij jego jedyną zakładkę na dole **`Produkty`**. 
-W pierwszym wierszu stwórz następujące nagłówki (od A do F):
+W pierwszym wierszu stwórz następujące nagłówki (od A do H):
 
-| A | B | C | D | E | F |
-|---|---|---|---|---|---|
-| **Nazwa** | **URL** | **Szukany rozmiar** | **Dostępne** | **Ostatnio dostępne** | **Ostatnie sprawdzenie** |
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| **Nazwa** | **URL** | **Szukany rozmiar** | **Dostępne** | **Ostatnio dostępne** | **Ostatnie sprawdzenie** | **Ostatnia dostępność** | **Błędy z rzędu** |
 
 - **Kolumny do wypełnienia przez Ciebie:**
   - **A (Nazwa)**: Dowolna nazwa produktu dla Ciebie.
   - **B (URL)**: Pełny link do produktu.
   - **C (Szukany rozmiar)**: Zostaw puste aby dostawać alerty o *każdym* nowym rozmiarze, lub wpisz np. `122` (lub `M, L`), by dostać alert *tylko* gdy pojawią się te konkretne rozmiary. Wielkość liter ani spacje po przecinkach nie mają znaczenia!
 - **Kolumny zarządzane przez bota (zostaw puste):**
-  - **D–F**: Bot sam tu wpisze co znalazł i kiedy zaktualizował status. *(Za kolumną F jest jeszcze ukryty zliczacz ewentualnych błędów)*.
+  - **D (`Dostępne`)**: Aktualnie dostępne rozmiary.
+  - **E (`Ostatnio dostępne`)**: Historia ostatniej dostępności per rozmiar w formacie `Rozmiar (Data)`.
+  - **F (`Ostatnie sprawdzenie`)**: Data i godzina ostatniego sprawdzenia produktu.
+  - **G (`Ostatnia dostępność`)**: Data i godzina, kiedy **szukany rozmiar** z kolumny C (lub dowolny rozmiar, jeśli kolumna C jest pusta) był ostatnio dostępny.
+  - **H (`Błędy z rzędu`)**: Techniczny zliczacz kolejnych błędów scrapowania (możesz ukryć tę kolumnę w arkuszu). *(Jeśli aktualizujesz starszy arkusz, w którym kolumna G służyła jako licznik błędów, przesuń/wyczyść ją — licznik przeniesiono do H).*
 
 ### 2. Zdobądź klucze API (Google i Discord)
 1. **Google Sheets**: 
@@ -166,7 +170,8 @@ size-checker/
 │   └── test-zalando.js       # Szybki test dla linków z Zalando
 ├── tests/
 │   ├── matcher.test.js       # Testy jednostkowe dopasowywania rozmiarów
-│   └── scraper.test.js       # Testy jednostkowe parserów HTML (Zalando, Modivo, Esotiq, LPP, Answear)
+│   ├── scraper.test.js       # Testy jednostkowe parserów HTML (Zalando, Modivo, Esotiq, LPP, Answear)
+│   └── tracking.test.js      # Testy jednostkowe śledzenia kolumny "Ostatnia dostępność" i układu kolumn
 ├── .env.example              # Szablon zmiennych środowiskowych
 ├── package.json              # Zależności i skrypty npm
 └── README.md                 # Główny dokument repozytorium

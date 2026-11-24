@@ -1,9 +1,60 @@
+import { realpathSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { scrapeSizes } from './scraper.js';
 import { getProducts, updateSizes, incrementErrorCount } from './sheets.js';
 import { sendSizeAlert, sendErrorAlert, sendSummary } from './discord.js';
 import { matchesAnySize, filterSizes } from './matcher.js';
 
 const ERROR_ALERT_THRESHOLD = 5;
+
+/**
+ * Computes updated values for "Ostatnio dostępne" (E) and "Ostatnia dostępność" (G).
+ * Updates G only when a searched size (or any size if C is blank) is currently in stock.
+ *
+ * @param {{ szukanyRozmiar?: string, ostatnioDostepne?: string, ostatniaDostepnosc?: string }} product
+ * @param {string[]} newSizesArr
+ * @param {string} nowFormatted
+ * @returns {{ ostatnioDostepne: string, ostatniaDostepnosc: string }}
+ */
+export function computeAvailabilityTracking(product, newSizesArr, nowFormatted) {
+  const history = {};
+  if (product.ostatnioDostepne) {
+    // Split only after a closing ')' so commas inside "DD.MM.YYYY, HH:MM" timestamps are preserved.
+    const parts = product.ostatnioDostepne.split(/(?<=\))\s*,\s*/);
+    for (const part of parts) {
+      const match = part.trim().match(/^(.+?)\s*\(([^()]+)\)$/);
+      if (match) {
+        history[match[1].trim()] = match[2].trim();
+      }
+    }
+  }
+
+  const trackedAvailableSizes = product.szukanyRozmiar
+    ? filterSizes(newSizesArr, product.szukanyRozmiar)
+    : newSizesArr;
+
+  for (const size of trackedAvailableSizes) {
+    history[size] = nowFormatted;
+  }
+
+  if (product.szukanyRozmiar) {
+    for (const key of Object.keys(history)) {
+      if (!matchesAnySize(key, product.szukanyRozmiar)) {
+        delete history[key];
+      }
+    }
+  }
+
+  const historyArr = Object.entries(history).map(([sz, date]) => `${sz} (${date})`);
+  const ostatnioDostepne = historyArr.length > 0 ? historyArr.join(', ') : '';
+
+  const prevLastAvailable = (product.ostatniaDostepnosc || '').trim();
+  // Pure integer values in column G are leftovers from the previous "Błędy z rzędu" column before moving it to H.
+  const validPrevTimestamp = /^\d+$/.test(prevLastAvailable) ? '' : prevLastAvailable;
+  const ostatniaDostepnosc = trackedAvailableSizes.length > 0 ? nowFormatted : validPrevTimestamp;
+
+  return { ostatnioDostepne, ostatniaDostepnosc };
+}
 
 async function main() {
   const isDryRun = process.argv.includes('--dry-run');
@@ -110,45 +161,22 @@ async function main() {
         console.log(`  — Brak nowych poszukiwanych rozmiarów (aktualnie dostępne: ${newSizesStr || 'Brak'})`);
     }
 
-    // --- Logika dla "Ostatnio dostępne" (Rozmiar (Data)) ---
-    const history = {};
-    if (product.ostatnioDostepne) {
-        const parts = product.ostatnioDostepne.split(',');
-        for (const part of parts) {
-            const match = part.trim().match(/(.+?)\s*\((.+?)\)/);
-            if (match) {
-                history[match[1].trim()] = match[2].trim();
-            }
-        }
-    }
-
+    // --- Logika dla "Ostatnio dostępne" (E) oraz "Ostatnia dostępność" (G) ---
     const nowFormatted = new Date().toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-    for (const size of newSizesArr) {
-        const shouldTrack = !product.szukanyRozmiar || matchesAnySize(size, product.szukanyRozmiar);
-        if (shouldTrack) {
-            history[size] = nowFormatted;
-        }
-    }
-
-    if (product.szukanyRozmiar) {
-        for (const key of Object.keys(history)) {
-            if (!matchesAnySize(key, product.szukanyRozmiar)) {
-                delete history[key];
-            }
-        }
-    }
-
-    const historyArr = Object.entries(history).map(([sz, date]) => `${sz} (${date})`);
-    const historyStr = historyArr.length > 0 ? historyArr.join(', ') : '';
+    const { ostatnioDostepne: historyStr, ostatniaDostepnosc } = computeAvailabilityTracking(
+      product,
+      newSizesArr,
+      nowFormatted
+    );
 
     if (!isDryRun) {
       try {
         await updateSizes(product.row, {
           dostepne: newSizesStr,
-          ostatnioDostepne: historyStr
+          ostatnioDostepne: historyStr,
+          ostatniaDostepnosc,
         });
-        console.log(`  ✓ Arkusz zaktualizowany (Historia: ${historyStr || 'Brak'})`);
+        console.log(`  ✓ Arkusz zaktualizowany (Ostatnia dostępność: ${ostatniaDostepnosc || 'Brak'}, Historia: ${historyStr || 'Brak'})`);
         if (product.bledyZRzedu > 0) {
           console.log(`  ✓ Licznik błędów zresetowany`);
         }
@@ -157,7 +185,7 @@ async function main() {
         stats.errors++;
       }
     } else {
-      console.log(`  [DRY-RUN] Symulacja zapisu: dostepne="${newSizesStr}", ostatnio="${historyStr}"`);
+      console.log(`  [DRY-RUN] Symulacja zapisu: dostepne="${newSizesStr}", ostatnio="${historyStr}", ostatniaDostepnosc="${ostatniaDostepnosc}"`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -174,7 +202,10 @@ async function main() {
   console.log('\n=== Size Checker — Koniec ===');
 }
 
-main().catch((err) => {
-  console.error('Krytyczny błąd:', err);
-  process.exit(1);
-});
+const isEntrypoint = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+if (isEntrypoint) {
+  main().catch((err) => {
+    console.error('Krytyczny błąd:', err);
+    process.exit(1);
+  });
+}

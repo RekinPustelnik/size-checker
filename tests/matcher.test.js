@@ -33,6 +33,12 @@ assert.equal(matchesSize('38.5', '38'), false, '38 NIE powinno pasować do 38.5'
 assert.equal(matchesSize('38,5', '38'), false, '38 NIE powinno pasować do 38,5');
 assert.equal(matchesSize('38.5', '38,5'), true, '38,5 powinno pasować do 38.5');
 assert.equal(matchesSize('38,5', '38.5'), true, '38.5 powinno pasować do 38,5');
+assert.equal(matchesSize('38 2/3', '38'), false, '38 NIE powinno pasować do 38 2/3');
+assert.equal(matchesSize('38 2/3', '38 2/3'), true, '38 2/3 powinno pasować do 38 2/3');
+assert.equal(matchesSize('One Size', 'one size'), true, 'One Size powinno pasować bez względu na wielkość liter');
+assert.equal(matchesSize('34-36', '34'), true, '34 powinno pasować do zakresu 34-36');
+assert.equal(matchesSize('36xregular', '36'), false, '36 NIE powinno pasować do 36xregular');
+assert.equal(matchesSize('36xregular', '36xregular'), true, '36xregular powinno pasować do 36xregular');
 
 // 5. Rozmiary bielizny (np. Esotiq)
 assert.equal(matchesSize('75B', '75B'), true, '75B powinno pasować do 75B');

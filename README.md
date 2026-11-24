@@ -5,7 +5,7 @@
 [![Discord Webhook](https://img.shields.io/badge/Discord-Webhook%20Alerts-5865F2.svg)](https://discord.com)
 [![GitHub Actions](https://img.shields.io/badge/Automated-GitHub%20Actions-2088FF.svg)](https://github.com/features/actions)
 
-Bezserwerowy, zautomatyzowany tracker dostępności rozmiarów ze sklepów internetowych (obsługuje m.in. **Answear**, **Sinsay / Reserved (grupa LPP)**, **Modivo**, **Esotiq**). Działa za darmo w chmurze (**GitHub Actions**), przechowuje dane w **Google Sheets** i natychmiast wysyła powiadomienia na **Discord**, gdy poszukiwany rozmiar wróci do sprzedaży.
+Bezserwerowy, zautomatyzowany tracker dostępności rozmiarów ze sklepów internetowych (obsługuje m.in. **Answear**, **Sinsay / Reserved (grupa LPP)**, **Modivo**, **Esotiq**, **Zalando**). Działa za darmo w chmurze (**GitHub Actions**), przechowuje dane w **Google Sheets** i natychmiast wysyła powiadomienia na **Discord**, gdy poszukiwany rozmiar wróci do sprzedaży.
 
 ---
 
@@ -16,6 +16,7 @@ Bot wspiera automatyczne monitorowanie i odczyt stanów magazynowych dla:
 - 🛍️ **Grupa LPP** (`sinsay.com`, `reserved.com`, `housebrand.com`, `cropp.com`, `mohito.com`) – wyciąganie stanów z wewnętrznej struktury `getProductData`
 - 👗 **Modivo** (`modivo.pl`) – warianty i dostępność z danych Schema.org LD+JSON
 - 👙 **Esotiq** (`esotiq.com`) – ekstrakcja danych ze stanu aplikacji `__NEXT_DATA__`
+- 👟 **Zalando** (`zalando.pl` oraz inne domeny `zalando.*`) – warianty i dostępność z danych Schema.org LD+JSON (`ProductGroup`) z zapasowym odczytem ze stanu hydracji strony (`hydratePartial`), w tym rozmiary odzieży, obuwia (np. `38 2/3`) oraz `One Size`
 
 ---
 
@@ -25,7 +26,7 @@ Bot wspiera automatyczne monitorowanie i odczyt stanów magazynowych dla:
 - 📊 **Wygodny panel w Google Sheets**: Dodawaj linki i definiuj jakich rozmiarów szukasz bezpośrednio w arkuszu kalkulacyjnym.
 - 🚨 **Alerty Discord**: Natychmiastowe powiadomienia ze zdjęciem produktu i przyciskiem szybkiego przejścia do sklepu.
 - 🎯 **Inteligentne filtrowanie rozmiarów**: Możliwość podania konkretnego rozmiaru (np. `L` albo `122 (6-7 l)`). Można też wpisać kilka po przecinku: `M, L, XL`. Dostajesz powiadomienie tylko gdy to, czego faktycznie szukasz, wróci do sprzedaży.
-- 👕 **Specjalistyczny scraper**: Bezpośrednio i dokładnie odczytuje stany magazynowe z ukrytej struktury danych sklepu (LPP, Answear, Modivo, Esotiq), nawet jeśli rozmiar wydaje się wyszarzony na stronie.
+- 👕 **Specjalistyczny scraper**: Bezpośrednio i dokładnie odczytuje stany magazynowe z ukrytej struktury danych sklepu (LPP, Answear, Modivo, Esotiq, Zalando), nawet jeśli rozmiar wydaje się wyszarzony na stronie.
 
 ---
 
@@ -106,12 +107,12 @@ npm run check
 # 4. Tryb Dry-Run (Sprawdza stany, ale NIE nadpisuje arkusza i NIE wysyła powiadomień na Discorda)
 npm run check:dry
 
-# 5. Testy jednostkowe filtra rozmiarów
+# 5. Testy jednostkowe (dopasowywanie rozmiarów i parsery HTML)
 npm test
 ```
 
 ### Narzędzie testowe do selektorów (`test-size`)
-Dodałem do repozytorium mały skrypt CLI, dzięki któremu w sekundę sprawdzisz czy bot poprawnie odczytuje stronę bez uruchamiania całego procesu z bazą w Google Sheets. W konsoli wpisz komendę z Twoim linkiem z Sinsay.
+Dodałem do repozytorium mały skrypt CLI, dzięki któremu w sekundę sprawdzisz czy bot poprawnie odczytuje stronę bez uruchamiania całego procesu z bazą w Google Sheets. W konsoli wpisz komendę z Twoim linkiem produktu (np. z Sinsay lub Zalando):
 
 ```bash
 # Weryfikuje jakie rozmiary są aktualnie "w systemie" sklepu
@@ -137,6 +138,12 @@ Wszystkie dostępne rozmiary (łącznie 3):
 --- WYNIK FILTRA ---
 ❌ NIE ZNALEZIONO dopasowań dla "122". Rozmiar niedostępny.
 ```
+**Przykład dla Zalando:**
+```bash
+npm run test-size "https://www.zalando.pl/adidas-sportswear-rajstopy-blackclear-pink-adq41e03i-q13.html" "S"
+# lub bezpośrednio skryptem dedykowanym:
+node scripts/test-zalando.js "https://www.zalando.pl/adidas-sportswear-rajstopy-blackclear-pink-adq41e03i-q13.html"
+```
 
 ## 📁 Struktura projektu
 
@@ -147,7 +154,7 @@ size-checker/
 │       └── check-sizes.yml   # Główny obieg (uruchamiany co 5 minut)
 ├── src/
 │   ├── index.js              # Główny skrypt orkiestrujący
-│   ├── scraper.js            # Pobieranie stron, omijanie blokad, parser rozmiarów (LPP, Answear, Modivo, Esotiq)
+│   ├── scraper.js            # Pobieranie stron, omijanie blokad, parser rozmiarów (LPP, Answear, Modivo, Esotiq, Zalando)
 │   ├── matcher.js            # Logika porównywania i filtrowania rozmiarów
 │   ├── sheets.js             # Komunikacja z Google Sheets API v4
 │   └── discord.js            # Wysyłanie powiadomień na Discord
@@ -155,7 +162,11 @@ size-checker/
 │   ├── test-size.js          # Narzędzie CLI do szybkiego testowania scrapera dla dowolnego URL i rozmiaru
 │   ├── test-answear.js       # Szybki test dla linków z Answear
 │   ├── test-esotiq.js        # Szybki test dla linków z Esotiq
-│   └── test-modivo.js        # Szybki test dla linków z Modivo
+│   ├── test-modivo.js        # Szybki test dla linków z Modivo
+│   └── test-zalando.js       # Szybki test dla linków z Zalando
+├── tests/
+│   ├── matcher.test.js       # Testy jednostkowe dopasowywania rozmiarów
+│   └── scraper.test.js       # Testy jednostkowe parserów HTML (Zalando, Modivo, Esotiq, LPP, Answear)
 ├── .env.example              # Szablon zmiennych środowiskowych
 ├── package.json              # Zależności i skrypty npm
 └── README.md                 # Główny dokument repozytorium
@@ -179,7 +190,7 @@ Domyślnie skrypt przystosowany jest do uruchamiania **ręcznego** (z zakładki 
 <details>
 <summary><b>Co zrobić, gdy bot nie potrafi pobrać rozmiarów ze sklepu?</b></summary>
 
-Upewnij się, że link jest poprawny. Bot wyciąga stany magazynowe bezpośrednio ze struktury danych umieszczonej w kodzie HTML sklepu (obsługuje m.in. sklepy z grupy LPP, Answear, Modivo oraz Esotiq). Użyj wbudowanego narzędzia `npm run test-size "LINK_DO_PRODUKTU"`, aby szybko zdiagnozować problem.
+Upewnij się, że link jest poprawny. Bot wyciąga stany magazynowe bezpośrednio ze struktury danych umieszczonej w kodzie HTML sklepu (obsługuje m.in. sklepy z grupy LPP, Answear, Modivo, Esotiq oraz Zalando). Użyj wbudowanego narzędzia `npm run test-size "LINK_DO_PRODUKTU"`, aby szybko zdiagnozować problem.
 </details>
 
 <details>

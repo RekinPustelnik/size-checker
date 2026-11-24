@@ -7,7 +7,7 @@
     "check": "node src/index.js",
     "check:dry": "node src/index.js --dry-run",
     "test-size": "node scripts/test-size.js",
-    "test": "node tests/matcher.test.js"
+    "test": "node tests/matcher.test.js && node tests/scraper.test.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

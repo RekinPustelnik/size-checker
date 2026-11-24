@@ -13,7 +13,7 @@ function escapeRegex(str) {
  * - Exact matches (case-insensitive)
  * - Letter sizes without false substrings (e.g. 'L' matches 'L', 'L/XL', 'L (40)', but NOT 'XL', 'XXL')
  * - Descriptive/children sizes (e.g. '104' matches '104 (3-4 lata)')
- * - Numbered/decimal sizes (e.g. '38' matches '38' but not '38.5' or '138', and '38,5' matches '38.5')
+ * - Numbered/decimal/fractional sizes (e.g. '38' matches '38' but not '38.5', '38 2/3' or '138', and '38,5' matches '38.5')
  *
  * @param {string} availableSize
  * @param {string} targetSize
@@ -33,8 +33,8 @@ export function matchesSize(availableSize, targetSize) {
   escaped = escaped.replace(/\\\.|,/g, '[.,]');
 
   // Boundary check: target cannot be preceded by alphanumeric chars,
-  // and cannot be followed by alphanumeric chars or decimal digits (e.g. 38 vs 38.5)
-  const regex = new RegExp('(^|[^a-z0-9])' + escaped + '(?![a-z0-9]|(?:[.,]\\d))', 'i');
+  // and cannot be followed by alphanumeric chars, decimal digits (38 vs 38.5), or fractions (38 vs 38 2/3)
+  const regex = new RegExp('(^|[^a-z0-9])' + escaped + '(?![a-z0-9]|(?:[.,]\\d)|(?:\\s+\\d+\\/\\d+))', 'i');
   return regex.test(normAvailable);
 }
 

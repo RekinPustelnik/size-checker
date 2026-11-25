@@ -5,7 +5,7 @@ import { getProducts, updateSizes, incrementErrorCount } from './sheets.js';
 import { sendSizeAlert, sendErrorAlert, sendSummary } from './discord.js';
 import { matchesAnySize, filterSizes } from './matcher.js';
 
-const ERROR_ALERT_THRESHOLD = 5;
+const ERROR_ALERT_THRESHOLD = 10;
 
 /**
  * Computes updated values for "Ostatnio dostępne" (E) and "Ostatnia dostępność" (G).

@@ -1,6 +1,6 @@
 # 👕 Size Checker
 
-[![Node.js](https://img.shields.io/badge/Node.js-v18%2B-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-v20%2B-green.svg)](https://nodejs.org/)
 [![Google Sheets API](https://img.shields.io/badge/Google%20Sheets-API%20v4-blue.svg)](https://developers.google.com/sheets/api)
 [![Discord Webhook](https://img.shields.io/badge/Discord-Webhook%20Alerts-5865F2.svg)](https://discord.com)
 [![GitHub Actions](https://img.shields.io/badge/Automated-GitHub%20Actions-2088FF.svg)](https://github.com/features/actions)
@@ -26,7 +26,7 @@ Bot wspiera automatyczne monitorowanie i odczyt stanów magazynowych dla:
 - 📊 **Wygodny panel w Google Sheets**: Dodawaj linki i definiuj jakich rozmiarów szukasz bezpośrednio w arkuszu kalkulacyjnym.
 - 🚨 **Alerty Discord**: Natychmiastowe powiadomienia ze zdjęciem produktu i przyciskiem szybkiego przejścia do sklepu.
 - 🎯 **Inteligentne filtrowanie rozmiarów**: Możliwość podania konkretnego rozmiaru (np. `L` albo `122 (6-7 l)`). Można też wpisać kilka po przecinku: `M, L, XL`. Dostajesz powiadomienie tylko gdy to, czego faktycznie szukasz, wróci do sprzedaży.
-- 👕 **Specjalistyczny scraper**: Bezpośrednio i dokładnie odczytuje stany magazynowe z ukrytej struktury danych sklepu (LPP, Answear, Modivo, Esotiq, Zalando), nawet jeśli rozmiar wydaje się wyszarzony na stronie.
+- 👕 **Specjalistyczny scraper**: Bezpośrednio i dokładnie odczytuje stany magazynowe z ukrytej struktury danych sklepu (LPP, Answear, Modivo, Esotiq, Zalando), nawet jeśli rozmiar wydaje się wyszarzony na stronie. Wykorzystuje `impit` (emulację TLS/HTTP2 przeglądarki + cookies sesyjne), automatyczne ponowienia i wykrywanie blokad antybotowych (bez zaśmiecania licznika błędów w kolumnie H).
 
 ---
 
@@ -190,6 +190,12 @@ Domyślnie skrypt przystosowany jest do uruchamiania **ręcznego** (z zakładki 
 1. **GitHub Self-Hosted Runner**: Zainstaluj aplikację GitHuba na własnym, zawsze włączonym komputerze/Raspberry Pi.
 2. **Oracle Cloud VPS (Always Free)**: Załóż darmowy serwer w Oracle, umieść tam kod i ustaw systemowego `crona` (polecane, najstabilniejsze).
 3. **Publiczne Repozytorium**: Jeśli zmienisz repozytorium na "Publiczne", GitHub zdejmie limit 2000 minut (pamiętaj tylko, by sekrety zostały w *GitHub Secrets*, a nie w kodzie!). Wtedy możesz przywrócić blok `schedule` w pliku `.github/workflows/check-sizes.yml`.
+</details>
+
+<details>
+<summary><b>Dlaczego Zalando lub inne sklepy czasami zwracają blokadę antybotową (zwłaszcza w GitHub Actions)?</b></summary>
+
+Zalando korzysta z ochrony **Akamai Bot Manager**, która często blokuje adresy IP serwerowni chmurowych (m.in. pulę Azure używaną przez GitHub Actions). Bot stosuje `impit` (emulację TLS/HTTP2 przeglądarki Chrome/Firefox oraz ciasteczka sesyjne) i automatyczne ponowienia z losowym opóźnieniem. Jeśli wszystkie próby zostaną mimo to zablokowane (HTTP 403/429 lub strona `Access Denied`), pozycja jest pomijana **bez naliczania błędu w kolumnie H (`Błędy z rzędu`)**. Aby zwiększyć skuteczność dla Zalando, możesz uruchamiać bota lokalnie lub na **GitHub Self-Hosted Runner** (z domowego IP).
 </details>
 
 <details>

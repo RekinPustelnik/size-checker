@@ -1,35 +1,180 @@
 // =============================================================================
-// scraper.js — Pobieranie HTML i wyciąganie dostępnych rozmiarów
+// scraper.js — Pobieranie HTML (Impit TLS/HTTP2 + retry + detekcja blokad) i parsowanie rozmiarów
 // =============================================================================
 
 import * as cheerio from 'cheerio';
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-];
+import { Impit } from 'impit';
 
 const TIMEOUT_MS = 30_000;
+const MAX_FETCH_ATTEMPTS = 3;
+const BROWSER_PROFILES = ['chrome', 'firefox'];
+const BLOCKED_STATUS_CODES = new Set([401, 403, 406, 429, 503]);
 const IN_STOCK_PATTERN = /^(?:https?:\/\/schema\.org\/)?(InStock|LimitedAvailability|OnlineOnly)$/i;
 
-function randomUserAgent() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+const FALLBACK_USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+];
+
+/**
+ * Creates a lightweight per-domain in-memory cookie jar compatible with Impit.
+ * Keeps Akamai/session cookies isolated per browser profile across retries and requests.
+ */
+export function createCookieJar() {
+  const store = new Map();
+
+  const matchesDomain = (hostname, cookieDomain) =>
+    hostname === cookieDomain || hostname.endsWith('.' + cookieDomain);
+
+  return {
+    setCookie(rawCookie, url) {
+      if (!rawCookie || !url) return;
+      let host;
+      try {
+        host = new URL(url).hostname.toLowerCase();
+      } catch {
+        return;
+      }
+
+      const segments = rawCookie.split(';').map((s) => s.trim()).filter(Boolean);
+      const eqIdx = segments[0]?.indexOf('=') ?? -1;
+      if (eqIdx <= 0) return;
+
+      const name = segments[0].slice(0, eqIdx).trim();
+      const value = segments[0].slice(eqIdx + 1).trim();
+
+      let domain = host;
+      let expired = value === '';
+      for (const attr of segments.slice(1)) {
+        const [rawKey, ...rawVal] = attr.split('=');
+        const key = rawKey.toLowerCase();
+        const attrVal = rawVal.join('=').trim();
+        if (key === 'domain' && attrVal) {
+          const cleanDomain = attrVal.replace(/^\./, '').toLowerCase();
+          if (matchesDomain(host, cleanDomain)) {
+            domain = cleanDomain;
+          }
+        } else if (key === 'max-age' && Number(attrVal) <= 0) {
+          expired = true;
+        }
+      }
+
+      if (!store.has(domain)) store.set(domain, new Map());
+      if (expired) {
+        store.get(domain).delete(name);
+      } else {
+        store.get(domain).set(name, value);
+      }
+    },
+
+    getCookieString(url) {
+      let host;
+      try {
+        host = new URL(url).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+
+      const pairs = [];
+      for (const [domain, cookies] of store.entries()) {
+        if (matchesDomain(host, domain)) {
+          for (const [name, value] of cookies.entries()) {
+            pairs.push(`${name}=${value}`);
+          }
+        }
+      }
+      return pairs.join('; ');
+    },
+  };
 }
 
-function buildHeaders(url) {
+const clients = new Map();
+
+function getHttpClient(profile) {
+  if (clients.has(profile)) {
+    return clients.get(profile);
+  }
+
+  let client;
+  try {
+    const cookieJar = createCookieJar();
+    const impit = new Impit({
+      browser: profile,
+      cookieJar,
+      timeout: TIMEOUT_MS,
+      followRedirects: true,
+    });
+    client = {
+      profile,
+      cookieJar,
+      fetch: (url, init) => impit.fetch(url, init),
+    };
+  } catch {
+    // Fallback to Node fetch if native Impit bindings are unavailable in the current environment
+    const ua = profile === 'firefox' ? FALLBACK_USER_AGENTS[1] : FALLBACK_USER_AGENTS[0];
+    client = {
+      profile,
+      cookieJar: null,
+      fetch: (url, init) => globalThis.fetch(url, {
+        ...init,
+        headers: { 'User-Agent': ua, ...(init?.headers || {}) },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        redirect: 'follow',
+      }),
+    };
+  }
+
+  clients.set(profile, client);
+  return client;
+}
+
+function buildRequestHeaders(url) {
   const origin = new URL(url).origin;
   return {
-    'User-Agent': randomUserAgent(),
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
     'Referer': origin + '/',
-    'DNT': '1',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
   };
+}
+
+/**
+ * Detects anti-bot challenge/block responses (Akamai, Cloudflare, PerimeterX)
+ * from HTTP status codes or HTML challenge markers served with HTTP 200.
+ *
+ * @param {number} status
+ * @param {string} [html='']
+ * @returns {string|null} Reason description if blocked, otherwise null.
+ */
+export function detectBotBlock(status, html = '') {
+  if (BLOCKED_STATUS_CODES.has(status)) {
+    return `HTTP ${status}`;
+  }
+
+  if (!html) return null;
+
+  const head = html.slice(0, 6000).toLowerCase();
+  const titleMatch = head.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const pageTitle = titleMatch ? titleMatch[1].trim() : '';
+
+  const blockedByTitle =
+    pageTitle === 'access denied' ||
+    pageTitle.includes('attention required') ||
+    pageTitle.includes('just a moment') ||
+    pageTitle.includes('robot or human') ||
+    pageTitle.includes('verify you are human');
+
+  const blockedByBody =
+    head.includes("you don't have permission to access") ||
+    head.includes('errors.edgesuite.net') ||
+    head.includes('cf-browser-verification') ||
+    head.includes('challenge-platform') ||
+    head.includes('_sec/cp_challenge') ||
+    head.includes('bm-verify');
+
+  if (blockedByTitle || blockedByBody) {
+    return 'Strona blokady antybotowej (Akamai / Cloudflare / Challenge)';
+  }
+
+  return null;
 }
 
 function isZalandoUrl(url) {
@@ -362,7 +507,7 @@ function parseAnswearSizes($) {
  * Parses available sizes and preview image from already-fetched product HTML.
  * @param {string} html
  * @param {string} [url='']
- * @returns {{ sizes: string[], ogImage: string|null, error: null }}
+ * @returns {{ sizes: string[], ogImage: string|null, blocked: false, error: null }}
  */
 export function parseSizesFromHtml(html, url = '') {
   const $ = cheerio.load(html);
@@ -373,25 +518,25 @@ export function parseSizesFromHtml(html, url = '') {
   if (ldResult.found) {
     const source = isZalandoUrl(url) ? 'Zalando/Schema.org' : 'Modivo/Schema.org';
     console.log(`  ✓ Znaleziono dostępne rozmiary (${source}): ${ldResult.sizes.length > 0 ? ldResult.sizes.join(', ') : 'Brak'}`);
-    return { sizes: ldResult.sizes, ogImage, error: null };
+    return { sizes: ldResult.sizes, ogImage, blocked: false, error: null };
   }
 
   const zalandoResult = parseZalandoHydration($);
   if (zalandoResult.found) {
     console.log(`  ✓ Znaleziono dostępne rozmiary (Zalando): ${zalandoResult.sizes.length > 0 ? zalandoResult.sizes.join(', ') : 'Brak'}`);
-    return { sizes: zalandoResult.sizes, ogImage, error: null };
+    return { sizes: zalandoResult.sizes, ogImage, blocked: false, error: null };
   }
 
   const esotiqResult = parseEsotiqSizes($);
   if (esotiqResult.found) {
     console.log(`  ✓ Znaleziono dostępne rozmiary (Esotiq): ${esotiqResult.sizes.length > 0 ? esotiqResult.sizes.join(', ') : 'Brak'}`);
-    return { sizes: esotiqResult.sizes, ogImage, error: null };
+    return { sizes: esotiqResult.sizes, ogImage, blocked: false, error: null };
   }
 
   const lppResult = parseLppSizes($);
   if (lppResult.found) {
     console.log(`  ✓ Znaleziono dostępne rozmiary (LPP): ${lppResult.sizes.length > 0 ? lppResult.sizes.join(', ') : 'Brak'}`);
-    return { sizes: lppResult.sizes, ogImage, error: null };
+    return { sizes: lppResult.sizes, ogImage, blocked: false, error: null };
   }
 
   const answearResult = parseAnswearSizes($);
@@ -400,29 +545,103 @@ export function parseSizesFromHtml(html, url = '') {
       ogImage = answearResult.image;
     }
     console.log(`  ✓ Znaleziono dostępne rozmiary (Answear): ${answearResult.sizes.length > 0 ? answearResult.sizes.join(', ') : 'Brak'}`);
-    return { sizes: answearResult.sizes, ogImage, error: null };
+    return { sizes: answearResult.sizes, ogImage, blocked: false, error: null };
   }
 
   throw new Error('Nie rozpoznano struktury danych na stronie (ani Modivo/Zalando Schema.org, ani Zalando, ani Esotiq, ani LPP, ani Answear).');
 }
 
-export async function scrapeSizes(url) {
-  console.log(`  → Pobieranie strony...`);
+async function warmupOriginCookie(client, url) {
+  if (!client.cookieJar) return;
+  const origin = new URL(url).origin;
+  if (client.cookieJar.getCookieString(url)) return;
+
   try {
-    const response = await fetch(url, {
-      headers: buildHeaders(url),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      redirect: 'follow',
+    await client.fetch(origin + '/', {
+      headers: {
+        'Accept-Language': 'pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7',
+      },
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-
-    const html = await response.text();
-    return parseSizesFromHtml(html, url);
-  } catch (err) {
-    console.error(`  ✗ Błąd: ${err.message}`);
-    return { sizes: [], ogImage: null, error: err.message };
+  } catch {
+    // Best-effort warmup only
   }
+}
+
+/**
+ * Fetches and parses available product sizes, rotating browser TLS fingerprints across retries
+ * and classifying anti-bot blocks separately from genuine scraping/URL errors.
+ *
+ * @param {string} url
+ * @param {{ fetchImpl?: Function, maxAttempts?: number, retryDelayMs?: number }} [options]
+ * @returns {Promise<{ sizes: string[], ogImage: string|null, blocked: boolean, error: string|null }>}
+ */
+export async function scrapeSizes(url, options = {}) {
+  const maxAttempts = options.maxAttempts ?? MAX_FETCH_ATTEMPTS;
+  const customFetch = options.fetchImpl;
+  const getRetryDelay = () => options.retryDelayMs ?? (1200 + Math.random() * 1800);
+
+  console.log(`  → Pobieranie strony...`);
+
+  let lastError = '';
+  let allBlocked = true;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const profile = BROWSER_PROFILES[(attempt - 1) % BROWSER_PROFILES.length];
+    const client = customFetch ? { fetch: customFetch, cookieJar: null } : getHttpClient(profile);
+
+    try {
+      const response = await client.fetch(url, {
+        headers: buildRequestHeaders(url),
+      });
+
+      const blockFromStatus = detectBotBlock(response.status);
+      if (blockFromStatus) {
+        throw Object.assign(new Error(`${blockFromStatus} ${response.statusText || ''}`.trim()), { isBlocked: true });
+      }
+
+      if (!response.ok) {
+        allBlocked = false;
+        const err = new Error(`HTTP ${response.status} ${response.statusText || ''}`.trim());
+        // Don't retry permanent client errors like 404/410
+        if (response.status === 404 || response.status === 410) {
+          console.error(`  ✗ Błąd: ${err.message}`);
+          return { sizes: [], ogImage: null, blocked: false, error: err.message };
+        }
+        throw err;
+      }
+
+      const html = await response.text();
+      const blockFromHtml = detectBotBlock(response.status, html);
+      if (blockFromHtml) {
+        throw Object.assign(new Error(blockFromHtml), { isBlocked: true });
+      }
+
+      allBlocked = false;
+      return parseSizesFromHtml(html, url);
+    } catch (err) {
+      if (!err.isBlocked) {
+        allBlocked = false;
+      }
+      lastError = err.message;
+      console.error(`  ✗ [Próba ${attempt}/${maxAttempts}] ${err.message}`);
+
+      if (attempt < maxAttempts) {
+        const delay = getRetryDelay();
+        if (delay > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        if (err.isBlocked && !customFetch) {
+          const nextProfile = BROWSER_PROFILES[attempt % BROWSER_PROFILES.length];
+          await warmupOriginCookie(getHttpClient(nextProfile), url);
+        }
+      }
+    }
+  }
+
+  return {
+    sizes: [],
+    ogImage: null,
+    blocked: allBlocked,
+    error: lastError || 'Nieznany błąd pobierania',
+  };
 }

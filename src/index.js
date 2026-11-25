@@ -84,6 +84,7 @@ async function main() {
     total: products.length,
     checked: 0,
     alerts: 0,
+    blocked: 0,
     errors: 0,
   };
 
@@ -98,6 +99,12 @@ async function main() {
     console.log(`  Szukany rozmiar: ${product.szukanyRozmiar || 'Dowolny'}`);
     
     const result = await scrapeSizes(product.url);
+
+    if (result.blocked) {
+      console.warn(`  ⚠ Strona zablokowana przez zabezpieczenia antybotowe (${result.error}) — pomijam bez naliczania błędu`);
+      stats.blocked++;
+      continue;
+    }
 
     if (result.error) {
       console.error(`  ✗ Nie udało się pobrać rozmiarów: ${result.error} — pomijam`);
@@ -194,6 +201,9 @@ async function main() {
   console.log('\n=== Podsumowanie ===');
   console.log(`Sprawdzono: ${stats.checked}/${stats.total}`);
   console.log(`Nowe rozmiary (Alerty): ${stats.alerts}`);
+  if (stats.blocked > 0) {
+    console.log(`Zablokowane (Anti-bot): ${stats.blocked}`);
+  }
   console.log(`Błędy: ${stats.errors}`);
 
   if (!isDryRun) {

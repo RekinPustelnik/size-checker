@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseSizesFromHtml } from '../src/scraper.js';
+import { parseSizesFromHtml, scrapeSizes, detectBotBlock, createCookieJar } from '../src/scraper.js';
 
 console.log('Uruchamianie testów parserów HTML (Zalando, Modivo, Esotiq, LPP, Answear)...');
 
@@ -197,5 +197,78 @@ assert.throws(
   () => parseSizesFromHtml('<html><title>Access Denied</title></html>', 'https://www.zalando.pl/blocked.html'),
   /Nie rozpoznano struktury danych/
 );
+
+// 10. Detekcja blokad antybotowych (HTTP 403 / 429 oraz HTML Akamai/Cloudflare)
+assert.ok(detectBotBlock(403), '403 powinno być wykryte jako blokada');
+assert.ok(detectBotBlock(429), '429 powinno być wykryte jako blokada');
+assert.equal(detectBotBlock(404), null, '404 NIE jest blokadą antybotową');
+assert.ok(detectBotBlock(200, '<html><head><title>Access Denied</title></head></html>'));
+assert.ok(detectBotBlock(200, '<html><body>https://errors.edgesuite.net/18.abc</body></html>'));
+assert.equal(detectBotBlock(200, '<html><head><title>adidas - Zalando.pl</title></head></html>'), null);
+
+// 11. CookieJar — przechowywanie i dopasowanie subdomen
+{
+  const jar = createCookieJar();
+  jar.setCookie('bm_sz=abc123; Domain=.zalando.pl; Path=/; Max-Age=14400', 'https://www.zalando.pl/produkt.html');
+  assert.equal(jar.getCookieString('https://www.zalando.pl/inny.html'), 'bm_sz=abc123');
+  assert.equal(jar.getCookieString('https://modivo.pl/p/test'), '');
+}
+
+// 12. scrapeSizes — retry przy 403 -> sukces przy drugiej próbie
+{
+  let calls = 0;
+  const res = await scrapeSizes('https://www.zalando.pl/test.html', {
+    maxAttempts: 2,
+    retryDelayMs: 0,
+    fetchImpl: async () => {
+      calls++;
+      if (calls === 1) {
+        return { ok: false, status: 403, statusText: 'Forbidden', text: async () => '' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => '<script type="application/ld+json">[{"@type":"ProductGroup","hasVariant":[{"size":"M","offers":{"availability":"https://schema.org/InStock"}}]}]</script>',
+      };
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(res.blocked, false);
+  assert.equal(res.error, null);
+  assert.deepEqual(res.sizes, ['M']);
+}
+
+// 13. scrapeSizes — wszystkie próby zablokowane -> blocked: true (nie nabija błędów)
+{
+  let calls = 0;
+  const res = await scrapeSizes('https://www.zalando.pl/test.html', {
+    maxAttempts: 2,
+    retryDelayMs: 0,
+    fetchImpl: async () => {
+      calls++;
+      return { ok: true, status: 200, statusText: 'OK', text: async () => '<html><title>Access Denied</title></html>' };
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(res.blocked, true);
+  assert.deepEqual(res.sizes, []);
+}
+
+// 14. scrapeSizes — trwały błąd 404 -> brak ponowień, blocked: false
+{
+  let calls = 0;
+  const res = await scrapeSizes('https://www.zalando.pl/missing.html', {
+    maxAttempts: 3,
+    retryDelayMs: 0,
+    fetchImpl: async () => {
+      calls++;
+      return { ok: false, status: 404, statusText: 'Not Found', text: async () => '' };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(res.blocked, false);
+  assert.match(res.error, /404/);
+}
 
 console.log('✅ Wszystkie testy parserów HTML zakończone sukcesem!');
